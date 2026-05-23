@@ -1,0 +1,2379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pebble PDC Player & Editor</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts: Inter & JetBrains Mono -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0f172a;
+            color: #f8fafc;
+        }
+        
+        .code-font {
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* Sleek custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1e293b;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #475569;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #64748b;
+        }
+
+        /* LCD screen scanlines effect */
+        .lcd-overlay {
+            position: relative;
+        }
+        .lcd-overlay::after {
+            content: " ";
+            display: block;
+            position: absolute;
+            top: 0; left: 0; bottom: 0; right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.15) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
+            background-size: 100% 3px, 3px 100%;
+            z-index: 10;
+            pointer-events: none;
+            opacity: 0.4;
+        }
+
+        /* Watch button active states */
+        .watch-btn {
+            transition: all 0.1s ease;
+        }
+        .watch-btn:active {
+            transform: scale(0.92);
+            filter: brightness(0.8);
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col overflow-x-hidden">
+
+    <header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur px-6 py-4 flex items-center justify-between sticky top-0 z-40">
+        <div class="flex items-center space-x-3">
+            <div class="bg-gradient-to-br from-orange-500 to-red-600 p-2 rounded-lg text-white flex items-center justify-center shadow-lg shadow-orange-500/10">
+                <i class="fa-solid fa-clock-rotate-left text-xl"></i>
+            </div>
+            <div>
+                <h1 class="font-bold text-lg tracking-tight flex items-center gap-2">
+                    Pebble PDC <span class="text-xs bg-orange-500/20 text-orange-400 px-2 py-0.5 rounded-full font-medium">Vector Studio</span>
+                </h1>
+                <p class="text-xs text-slate-400">Play, Edit, and Convert Pebble Watch Animated Draw Command Files</p>
+            </div>
+        </div>
+        
+        <div class="flex items-center space-x-3">
+            <button onclick="toggleHelpModal(true)" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium transition flex items-center gap-1.5">
+                <i class="fa-solid fa-circle-question"></i> Docs & Help
+            </button>
+            <label class="px-3 py-1.5 bg-orange-600 hover:bg-orange-500 text-white rounded-lg text-xs font-semibold cursor-pointer transition flex items-center gap-1.5">
+                <i class="fa-solid fa-file-import"></i> Upload .pdc
+                <input type="file" id="pdc-upload-input" class="hidden" accept=".pdc,.bin" onchange="handlePdcUpload(event)">
+            </label>
+            <label class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-semibold cursor-pointer transition flex items-center gap-1.5">
+                <i class="fa-solid fa-file-code"></i> Import SVG
+                <input type="file" id="svg-upload-input" class="hidden" accept=".svg" onchange="handleSvgUpload(event)">
+            </label>
+        </div>
+    </header>
+
+    <main class="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 p-6 overflow-hidden">
+        
+        <!-- Left Panel: Bezel Preview & Player Controls -->
+        <section class="lg:col-span-4 bg-slate-900/40 border border-slate-800 rounded-2xl p-6 flex flex-col items-center justify-between shadow-inner">
+            <div class="w-full text-center pb-4 border-b border-slate-800/60 flex items-center justify-between">
+                <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Device Emulator</span>
+                <div class="flex items-center space-x-2">
+                    <span class="text-xs text-slate-500">Model:</span>
+                    <select id="bezel-model-select" onchange="updateBezelModel()" class="bg-slate-800 border border-slate-700 text-xs rounded px-2 py-1 text-slate-300 focus:outline-none focus:ring-1 focus:ring-orange-500">
+                        <option value="time">Pebble Time</option>
+                        <option value="classic">Pebble Classic</option>
+                        <option value="round">Pebble Time Round</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="relative py-8 flex items-center justify-center select-none">
+                <!-- Bezel wrapper -->
+                <div id="pebble-watch-frame" class="relative bg-slate-950 border-4 border-slate-700 w-[240px] h-[300px] rounded-[48px] shadow-2xl transition-all duration-300 flex items-center justify-center">
+                    
+                    <!-- Buttons on hardware (Left & Right) -->
+                    <!-- Back Button (Left side) -->
+                    <button onclick="handleWatchButton('back')" class="watch-btn absolute -left-4 top-[110px] w-4 h-12 bg-slate-800 border-y border-l border-slate-600 rounded-l-md hover:bg-slate-700 focus:outline-none" title="Back / Reset"></button>
+                    <!-- Up Button -->
+                    <button onclick="handleWatchButton('up')" class="watch-btn absolute -right-4 top-[65px] w-4 h-10 bg-slate-800 border-y border-r border-slate-600 rounded-r-md hover:bg-slate-700 focus:outline-none" title="Up / Prev Frame"></button>
+                    <!-- Select Button -->
+                    <button onclick="handleWatchButton('select')" class="watch-btn absolute -right-4 top-[130px] w-4 h-12 bg-slate-800 border-y border-r border-slate-600 rounded-r-md hover:bg-slate-700 focus:outline-none" title="Select / Play-Pause"></button>
+                    <!-- Down Button -->
+                    <button onclick="handleWatchButton('down')" class="watch-btn absolute -right-4 top-[205px] w-4 h-10 bg-slate-800 border-y border-r border-slate-600 rounded-r-md hover:bg-slate-700 focus:outline-none" title="Down / Next Frame"></button>
+
+                    <!-- Bezel inner glass screen -->
+                    <div id="bezel-inner" class="relative w-[190px] h-[220px] bg-slate-900 rounded-[24px] flex flex-col items-center justify-center p-4 border border-slate-800">
+                        
+                        <!-- Watch Screen (LCD Canvas container) -->
+                        <div id="lcd-screen-container" class="relative w-[144px] h-[168px] bg-black rounded shadow-md overflow-hidden flex items-center justify-center border border-slate-950 lcd-overlay transition-colors">
+                            <canvas id="pebble-lcd-canvas" class="block w-full h-full cursor-crosshair"></canvas>
+                        </div>
+                        
+                        <!-- Brand Label -->
+                        <div class="text-[10px] font-bold tracking-widest text-slate-600 mt-2 uppercase select-none">pebble</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="w-full bg-slate-900/60 border border-slate-800/80 p-4 rounded-xl space-y-3">
+                <div class="flex items-center justify-between text-xs text-slate-400">
+                    <span id="player-status-badge" class="flex items-center gap-1.5 font-medium text-orange-400">
+                        <i class="fa-solid fa-circle-play animate-pulse"></i> Playing
+                    </span>
+                    <span id="frame-counter-label" class="font-mono bg-slate-800 px-2 py-0.5 rounded text-slate-300">Frame 0 / 0</span>
+                </div>
+                
+                <input type="range" id="timeline-scrubber" min="0" max="0" value="0" oninput="scrubTimeline(this.value)" class="w-full accent-orange-500 h-1.5 bg-slate-800 rounded-lg cursor-pointer">
+                
+                <div class="flex items-center justify-between pt-1">
+                    <div class="flex space-x-1">
+                        <button onclick="stepBack()" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center transition" title="Prev Frame">
+                            <i class="fa-solid fa-backward-step text-xs"></i>
+                        </button>
+                        <button onclick="togglePlayback()" id="play-pause-btn" class="w-10 h-8 rounded-lg bg-orange-600 hover:bg-orange-500 text-white flex items-center justify-center transition" title="Play / Pause">
+                            <i class="fa-solid fa-pause text-xs"></i>
+                        </button>
+                        <button onclick="stepForward()" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center transition" title="Next Frame">
+                            <i class="fa-solid fa-forward-step text-xs"></i>
+                        </button>
+                    </div>
+                    
+                    <div class="flex items-center space-x-2">
+                        <span class="text-[10px] text-slate-500 font-medium">Speed:</span>
+                        <select id="play-speed-select" onchange="updatePlaySpeed(this.value)" class="bg-slate-800 border border-slate-700 text-xs rounded px-1.5 py-1 text-slate-300 focus:outline-none">
+                            <option value="0.25">0.25x</option>
+                            <option value="0.5">0.5x</option>
+                            <option value="1" selected>1.0x</option>
+                            <option value="1.5">1.5x</option>
+                            <option value="2">2.0x</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Center Column: Preset Library & Workspace Controls -->
+        <section class="lg:col-span-4 flex flex-col space-y-6">
+            
+            <!-- Custom Preset Templates -->
+            <div class="bg-slate-900/40 border border-slate-800 rounded-2xl p-5 space-y-4">
+                <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <i class="fa-solid fa-images text-orange-400"></i> Sample Library
+                </h3>
+                <div class="grid grid-cols-2 gap-2.5">
+                    <button onclick="loadPreset('pulsingHeart')" class="p-3 bg-slate-900 hover:bg-slate-850 border border-slate-800 hover:border-slate-750 rounded-xl text-left transition duration-200 group">
+                        <div class="flex items-center justify-between pb-1">
+                            <span class="text-xs font-medium text-slate-300 group-hover:text-white">Pulsing Heart</span>
+                            <i class="fa-solid fa-heart text-red-500 text-xs"></i>
+                        </div>
+                        <p class="text-[10px] text-slate-500">3 frame pulsing vector sequence</p>
+                    </button>
+                    <button onclick="loadPreset('spinningStar')" class="p-3 bg-slate-900 hover:bg-slate-850 border border-slate-800 hover:border-slate-750 rounded-xl text-left transition duration-200 group">
+                        <div class="flex items-center justify-between pb-1">
+                            <span class="text-xs font-medium text-slate-300 group-hover:text-white">Rotating Star</span>
+                            <i class="fa-solid fa-star text-yellow-500 text-xs"></i>
+                        </div>
+                        <p class="text-[10px] text-slate-500">8 frame rotating star animation</p>
+                    </button>
+                    <button onclick="loadPreset('solarOrbit')" class="p-3 bg-slate-900 hover:bg-slate-850 border border-slate-800 hover:border-slate-750 rounded-xl text-left transition duration-200 group">
+                        <div class="flex items-center justify-between pb-1">
+                            <span class="text-xs font-medium text-slate-300 group-hover:text-white">Solar Orbit</span>
+                            <i class="fa-solid fa-sun text-orange-500 text-xs"></i>
+                        </div>
+                        <p class="text-[10px] text-slate-500">12 frame loading circular orbit</p>
+                    </button>
+                    <button onclick="loadPreset('blank')" class="p-3 bg-slate-900 hover:bg-slate-850 border border-slate-800 hover:border-slate-750 rounded-xl text-left transition duration-200 group">
+                        <div class="flex items-center justify-between pb-1">
+                            <span class="text-xs font-medium text-slate-300 group-hover:text-white">Empty Canvas</span>
+                            <i class="fa-solid fa-file text-slate-400 text-xs"></i>
+                        </div>
+                        <p class="text-[10px] text-slate-500">Fresh slate, single image frame</p>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Display settings & Workspace helpers -->
+            <div class="bg-slate-900/40 border border-slate-800 rounded-2xl p-5 space-y-4 flex-1 flex flex-col justify-between">
+                <div class="space-y-4">
+                    <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-sliders text-orange-400"></i> Workspace Display
+                    </h3>
+                    
+                    <div class="space-y-2.5">
+                        <!-- Canvas Background Presets -->
+                        <div class="flex items-center justify-between text-xs">
+                            <span class="text-slate-400">Background:</span>
+                            <div class="flex space-x-1.5">
+                                <button onclick="setLcdBackground('#000000')" class="w-5 h-5 rounded-full bg-black border border-slate-700 focus:outline-none focus:ring-1 focus:ring-orange-500" title="Black"></button>
+                                <button onclick="setLcdBackground('#ffffff')" class="w-5 h-5 rounded-full bg-white border border-slate-300 focus:outline-none focus:ring-1 focus:ring-orange-500" title="White"></button>
+                                <button onclick="setLcdBackground('#005555')" class="w-5 h-5 rounded-full bg-[#005555] border border-slate-700 focus:outline-none focus:ring-1 focus:ring-orange-500" title="Pebble Teal"></button>
+                                <button onclick="setLcdBackground('#aa0000')" class="w-5 h-5 rounded-full bg-[#aa0000] border border-slate-700 focus:outline-none focus:ring-1 focus:ring-orange-500" title="Pebble Red"></button>
+                            </div>
+                        </div>
+
+                        <!-- Zoom Mode -->
+                        <div class="flex items-center justify-between text-xs">
+                            <span class="text-slate-400">Scaling Mode:</span>
+                            <div class="inline-flex rounded-lg p-0.5 bg-slate-950 border border-slate-800">
+                                <button id="scale-fit-btn" onclick="setScaleMode('fit')" class="px-2.5 py-1 text-[10px] rounded bg-orange-600 text-white font-medium">Fit watch</button>
+                                <button id="scale-actual-btn" onclick="setScaleMode('actual')" class="px-2.5 py-1 text-[10px] rounded text-slate-400 font-medium">1:1</button>
+                                <button id="scale-custom-btn" onclick="setScaleMode('custom')" class="px-2.5 py-1 text-[10px] rounded text-slate-400 font-medium">Zoom/Pan</button>
+                            </div>
+                        </div>
+
+                        <!-- Zoom Controls (Visible when custom zoom is enabled) -->
+                        <div id="zoom-control-div" class="hidden flex items-center justify-between text-xs bg-slate-950/60 p-2 rounded-lg border border-slate-850">
+                            <span class="text-slate-500">Zoom Scale:</span>
+                            <div class="flex items-center space-x-2">
+                                <button onclick="adjustZoom(-0.5)" class="w-6 h-6 rounded bg-slate-800 text-slate-300 flex items-center justify-center">-</button>
+                                <span id="zoom-value-label" class="font-mono text-slate-300">1.0x</span>
+                                <button onclick="adjustZoom(0.5)" class="w-6 h-6 rounded bg-slate-800 text-slate-300 flex items-center justify-center">+</button>
+                            </div>
+                        </div>
+
+                        <!-- Togglable Overlays -->
+                        <div class="space-y-2 pt-2 border-t border-slate-850">
+                            <label class="flex items-center justify-between text-xs text-slate-400 cursor-pointer">
+                                <span>Pixel Grid (Zoom 4x+)</span>
+                                <input type="checkbox" id="grid-toggle-checkbox" onchange="togglePixelGrid(this.checked)" checked class="rounded border-slate-700 text-orange-600 focus:ring-orange-500 h-4 w-4 bg-slate-800">
+                            </label>
+                            <label class="flex items-center justify-between text-xs text-slate-400 cursor-pointer">
+                                <span>CRT Scanline Overlay</span>
+                                <input type="checkbox" id="scanline-toggle-checkbox" onchange="toggleScanlines(this.checked)" checked class="rounded border-slate-700 text-orange-600 focus:ring-orange-500 h-4 w-4 bg-slate-800">
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Exporter toolbar -->
+                <div class="space-y-2 border-t border-slate-850 pt-4">
+                    <span class="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">Export & Download</span>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button onclick="exportBinaryPdc()" class="py-2 px-3 bg-orange-600 hover:bg-orange-500 text-white rounded-xl text-xs font-semibold transition flex items-center justify-center gap-1.5 shadow-lg shadow-orange-600/10">
+                            <i class="fa-solid fa-file-arrow-down"></i> Save .pdc
+                        </button>
+                        <button onclick="exportAnimatedSvg()" class="py-2 px-3 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-750 rounded-xl text-xs font-semibold transition flex items-center justify-center gap-1.5">
+                            <i class="fa-solid fa-vector-square"></i> Save SVG
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Right Panel: Interactive Inspector & Vector Editor -->
+        <section class="lg:col-span-4 bg-slate-900/40 border border-slate-800 rounded-2xl p-5 flex flex-col space-y-4 overflow-y-auto max-h-[80vh]">
+            <div class="border-b border-slate-800 pb-3 flex items-center justify-between">
+                <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <i class="fa-solid fa-pencil text-orange-400"></i> Vector Inspector
+                </h3>
+                <span id="file-type-badge" class="font-mono text-[9px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded font-bold uppercase">PDCS</span>
+            </div>
+
+            <!-- Global File settings -->
+            <div class="grid grid-cols-2 gap-3 bg-slate-950/40 p-3 rounded-xl border border-slate-850">
+                <div>
+                    <label class="text-[10px] text-slate-500 font-bold uppercase tracking-wide block mb-1">View Box Width</label>
+                    <input type="number" id="vb-width-input" onchange="updateViewBox()" class="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1 text-xs text-slate-200 focus:outline-none focus:border-orange-500">
+                </div>
+                <div>
+                    <label class="text-[10px] text-slate-500 font-bold uppercase tracking-wide block mb-1">View Box Height</label>
+                    <input type="number" id="vb-height-input" onchange="updateViewBox()" class="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1 text-xs text-slate-200 focus:outline-none focus:border-orange-500">
+                </div>
+                <div class="col-span-2">
+                    <label class="text-[10px] text-slate-500 font-bold uppercase tracking-wide block mb-1">Play Repeat Loop Count</label>
+                    <select id="play-count-select" onchange="updatePlayCount(this.value)" class="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-xs text-slate-200 focus:outline-none">
+                        <option value="65535">Repeat Indefinitely (0xFFFF)</option>
+                        <option value="1">Play Once (1)</option>
+                        <option value="2">Play Twice (2)</option>
+                        <option value="5">Play 5 times</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Timeline Frame List -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between">
+                    <span class="text-[11px] font-semibold text-slate-400">Timeline Frames</span>
+                    <div class="flex space-x-1">
+                        <button onclick="addBlankFrame()" class="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-0.5 rounded" title="Duplicate active frame">
+                            <i class="fa-solid fa-plus text-[9px]"></i> Frame
+                        </button>
+                        <button onclick="deleteActiveFrame()" class="text-[10px] bg-red-950 hover:bg-red-900 text-red-400 px-2 py-0.5 rounded" title="Delete current frame">
+                            <i class="fa-solid fa-trash-can text-[9px]"></i> Delete
+                        </button>
+                    </div>
+                </div>
+                <div id="inspector-frame-list" class="flex gap-1.5 overflow-x-auto pb-1 max-w-full">
+                    <!-- Dynamic frame selector tabs -->
+                </div>
+                <div class="flex items-center justify-between bg-slate-950/20 p-2 rounded border border-slate-850/60 text-xs">
+                    <span class="text-slate-500">Selected Frame Duration (ms):</span>
+                    <input type="number" id="active-frame-duration" step="10" min="10" onchange="updateFrameDuration(this.value)" class="w-16 bg-slate-900 border border-slate-800 rounded px-1.5 py-0.5 text-xs text-center text-slate-200 focus:outline-none">
+                </div>
+            </div>
+
+            <!-- Draw Commands in the selected frame -->
+            <div class="space-y-3 flex-1 flex flex-col min-h-0">
+                <div class="flex items-center justify-between border-t border-slate-850 pt-3">
+                    <span class="text-[11px] font-semibold text-slate-400">Draw Command Layers</span>
+                    <div class="flex space-x-1">
+                        <button onclick="addNewCommand(1)" class="text-[10px] bg-slate-800 hover:bg-slate-700 text-orange-400 px-2 py-0.5 rounded">
+                            <i class="fa-solid fa-plus text-[8px]"></i> Path
+                        </button>
+                        <button onclick="addNewCommand(2)" class="text-[10px] bg-slate-800 hover:bg-slate-700 text-orange-400 px-2 py-0.5 rounded">
+                            <i class="fa-solid fa-plus text-[8px]"></i> Circle
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Scrollable list of commands -->
+                <div id="command-list-container" class="space-y-2 overflow-y-auto flex-1 max-h-[250px]">
+                    <!-- Dynamic commands render -->
+                </div>
+            </div>
+
+            <!-- Active Command Detailed Editor Overlay -->
+            <div id="active-command-properties-panel" class="hidden bg-slate-950/80 p-4 rounded-xl border border-slate-800 space-y-3">
+                <div class="flex items-center justify-between text-xs border-b border-slate-850 pb-2">
+                    <span class="font-semibold text-orange-400">Command Properties</span>
+                    <span id="selected-command-index-tag" class="text-slate-500 text-[10px] font-mono">#0</span>
+                </div>
+
+                <div class="grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                        <span class="text-slate-500 block mb-1">Stroke Width</span>
+                        <input type="number" id="cmd-stroke-width" min="0" max="20" onchange="updateCommandProperty('strokeWidth', this.value)" class="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1">
+                    </div>
+                    <div>
+                        <span id="cmd-radius-label" class="text-slate-500 block mb-1">Circle Radius</span>
+                        <input type="number" id="cmd-radius" min="0" onchange="updateCommandProperty('radius', this.value)" class="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                        <span class="text-slate-500 block mb-1">Stroke Color</span>
+                        <button id="stroke-color-btn" onclick="openColorPicker('stroke')" class="w-full h-8 rounded border border-slate-700 text-left px-2 flex items-center justify-between focus:outline-none">
+                            <span id="stroke-color-name" class="text-[10px] truncate">GColorWhite</span>
+                            <div id="stroke-color-preview" class="w-4 h-4 rounded bg-white border border-slate-600"></div>
+                        </button>
+                    </div>
+                    <div>
+                        <span class="text-slate-500 block mb-1">Fill Color</span>
+                        <button id="fill-color-btn" onclick="openColorPicker('fill')" class="w-full h-8 rounded border border-slate-700 text-left px-2 flex items-center justify-between focus:outline-none">
+                            <span id="fill-color-name" class="text-[10px] truncate">GColorClear</span>
+                            <div id="fill-color-preview" class="w-4 h-4 rounded bg-transparent border border-slate-600 relative overflow-hidden">
+                                <div class="absolute inset-0 bg-red-500/20 flex items-center justify-center text-[8px] font-bold text-red-500">X</div>
+                            </div>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="flex items-center justify-between text-xs pt-1">
+                    <label class="flex items-center space-x-2 text-slate-300 cursor-pointer">
+                        <input type="checkbox" id="cmd-open-path" onchange="updateCommandProperty('open', this.checked)" class="rounded border-slate-700 text-orange-600 focus:ring-orange-500">
+                        <span>Open Path (No close segment)</span>
+                    </label>
+                    <label class="flex items-center space-x-2 text-slate-300 cursor-pointer">
+                        <input type="checkbox" id="cmd-hidden" onchange="updateCommandProperty('hidden', this.checked)" class="rounded border-slate-700 text-orange-600 focus:ring-orange-500">
+                        <span>Hidden (Don't Draw)</span>
+                    </label>
+                </div>
+
+                <!-- Point coordinates editable editor list -->
+                <div class="space-y-1.5 border-t border-slate-850 pt-2.5">
+                    <div class="flex items-center justify-between text-xs text-slate-400">
+                        <span>Coordinate Points</span>
+                        <button onclick="addPointToCommand()" class="text-[9px] bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-750 px-1.5 py-0.5 rounded text-orange-400">
+                            <i class="fa-solid fa-plus text-[8px]"></i> Add Point
+                        </button>
+                    </div>
+                    <div id="coordinates-editor-list" class="space-y-1 max-h-[140px] overflow-y-auto pr-1">
+                        <!-- Dynamic coordinate row coordinates inputs -->
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Custom Color Picker Modal Dialog -->
+    <div id="pebble-color-picker-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+        <div class="bg-slate-900 border border-slate-800 w-full max-w-[420px] rounded-2xl shadow-2xl p-5 space-y-4">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h3 id="picker-title-label" class="font-bold text-sm text-white">Choose Stroke Color</h3>
+                    <p class="text-[10px] text-slate-400">Authentic Pebble hardware 8-bit color space</p>
+                </div>
+                <button onclick="closeColorPicker()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            
+            <!-- Alpha settings -->
+            <div class="flex items-center justify-between bg-slate-950 p-2.5 rounded-xl border border-slate-850 text-xs">
+                <span class="text-slate-400">Alpha / Transparency:</span>
+                <div class="flex space-x-1.5" id="color-alpha-selector">
+                    <button onclick="selectAlphaBit(0)" id="alpha-0-btn" class="px-2 py-1 text-[9px] font-bold rounded bg-slate-900 text-slate-400 border border-slate-800">Clear</button>
+                    <button onclick="selectAlphaBit(1)" id="alpha-1-btn" class="px-2 py-1 text-[9px] font-bold rounded bg-slate-900 text-slate-400 border border-slate-800">33%</button>
+                    <button onclick="selectAlphaBit(2)" id="alpha-2-btn" class="px-2 py-1 text-[9px] font-bold rounded bg-slate-900 text-slate-400 border border-slate-800">66%</button>
+                    <button onclick="selectAlphaBit(3)" id="alpha-3-btn" class="px-2 py-1 text-[9px] font-bold rounded bg-orange-600 text-white border border-transparent">Opaque</button>
+                </div>
+            </div>
+
+            <!-- Grid palette container -->
+            <div id="picker-color-grid" class="grid grid-cols-8 gap-1.5 max-h-[180px] overflow-y-auto p-1 bg-slate-950 border border-slate-850 rounded-xl">
+                <!-- Javascript will inject 64 color squares -->
+            </div>
+
+            <div class="flex items-center justify-between border-t border-slate-850 pt-3 text-[10px]">
+                <span id="picker-active-color-name" class="font-mono text-slate-400">GColorBlack</span>
+                <span id="picker-active-color-hex" class="font-mono text-orange-400">#000000</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Help & Documentation Modal -->
+    <div id="docs-help-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+        <div class="bg-slate-900 border border-slate-800 w-full max-w-[550px] rounded-2xl shadow-2xl p-6 space-y-4 max-h-[85vh] overflow-y-auto">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <h3 class="font-bold text-base text-white flex items-center gap-2">
+                    <i class="fa-solid fa-circle-info text-orange-500"></i> Pebble PDC Format Studio
+                </h3>
+                <button onclick="toggleHelpModal(false)" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            
+            <div class="space-y-4 text-xs text-slate-300 leading-relaxed">
+                <div>
+                    <h4 class="font-bold text-orange-400 mb-1">What is Pebble PDC?</h4>
+                    <p>Pebble Draw Commands (PDC) are optimized vector instructions used on Pebble watch displays (e.g. Pebble Time). They are lightweight alternatives to animated APNG files, supporting scalable points, colors, strokes, and animations natively on hardware.</p>
+                </div>
+                <div>
+                    <h4 class="font-bold text-orange-400 mb-1">Binary Structure:</h4>
+                    <ul class="list-disc list-inside space-y-1 text-slate-400 ml-1">
+                        <li><span class="text-slate-200">Magic Code:</span> <code class="bg-slate-950 px-1 py-0.5 rounded text-red-400 font-mono">PDCI</code> for single images; <code class="bg-slate-950 px-1 py-0.5 rounded text-red-400 font-mono">PDCS</code> for sequence frames.</li>
+                        <li><span class="text-slate-200">Color Palette:</span> Custom 64-color 8-bit argb color format.</li>
+                        <li><span class="text-slate-200">Draw Command:</span> Supports Paths, Circles, and Precise 13.3-fixed-point Paths.</li>
+                    </ul>
+                </div>
+                <div>
+                    <h4 class="font-bold text-orange-400 mb-1">How to Use the Web Tool:</h4>
+                    <ul class="list-disc list-inside space-y-1 text-slate-400 ml-1">
+                        <li><span class="text-slate-200">Import files:</span> Drag & drop or upload existing <code class="text-orange-400">.pdc</code> resources or <code class="text-orange-400">.svg</code> files. Bezier curve nodes will flatten natively!</li>
+                        <li><span class="text-slate-200">Interactive Canvas:</span> Select elements in the inspector and **drag points directly on the screen** to position them.</li>
+                        <li><span class="text-slate-200">Watch Buttons:</span> Tap the interactive physical buttons on the watch bezel to emulate player commands directly (Up/Down for frames, Select for play/pause, Back to reset).</li>
+                    </ul>
+                </div>
+                <div class="bg-slate-950 p-3 rounded-xl border border-slate-850 font-mono text-[10px] text-slate-400">
+                    <span class="text-orange-500 font-bold">PRO TIP:</span> Precise Path (Type 3) allows sub-pixel coordinates for smooth transitions. Points are automatically divided/multiplied by 8 inside the binary coder!
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast message container -->
+    <div id="toast-banner" class="fixed bottom-6 right-6 z-50 flex items-center gap-2 bg-slate-900 border border-slate-800 px-4 py-3 rounded-xl shadow-2xl transition duration-300 translate-y-20 opacity-0">
+        <span id="toast-icon-wrapper" class="text-orange-500"><i class="fa-solid fa-info-circle"></i></span>
+        <span id="toast-message-text" class="text-xs text-slate-200 font-medium">Hello world!</span>
+    </div>
+
+    <script>
+        const PEBBLE_COLORS = [
+            { value: 192, name: "Black", hex: "#000000" },
+            { value: 193, name: "Oxford Blue", hex: "#000055" },
+            { value: 194, name: "Duke Blue", hex: "#0000aa" },
+            { value: 195, name: "Blue", hex: "#0000ff" },
+            { value: 196, name: "Dark Green", hex: "#005500" },
+            { value: 197, name: "Midnight Green", hex: "#005555" },
+            { value: 198, name: "Cobalt Blue", hex: "#0055aa" },
+            { value: 199, name: "Blue Moon", hex: "#0055ff" },
+            { value: 200, name: "Islamic Green", hex: "#00aa00" },
+            { value: 201, name: "Jaeger Green", hex: "#00aa55" },
+            { value: 202, name: "Tiffany Blue", hex: "#00aaaa" },
+            { value: 203, name: "Vivid Cerulean", hex: "#00aaff" },
+            { value: 204, name: "Green", hex: "#00ff00" },
+            { value: 205, name: "Malachite", hex: "#00ff55" },
+            { value: 206, name: "Medium Spring Green", hex: "#00ffaa" },
+            { value: 207, name: "Cyan", hex: "#00ffff" },
+            { value: 208, name: "Bulgarian Rose", hex: "#550000" },
+            { value: 209, name: "Imperial Purple", hex: "#550055" },
+            { value: 210, name: "Indigo", hex: "#5500aa" },
+            { value: 211, name: "Electric Ultramarine", hex: "#5500ff" },
+            { value: 212, name: "Army Green", hex: "#555500" },
+            { value: 213, name: "Dark Gray", hex: "#555555" },
+            { value: 214, name: "Liberty", hex: "#5555aa" },
+            { value: 215, name: "Very Light Blue", hex: "#5555ff" },
+            { value: 216, name: "Kelly Green", hex: "#55aa00" },
+            { value: 217, name: "May Green", hex: "#55aa55" },
+            { value: 218, name: "Cadet Blue", hex: "#55aaaa" },
+            { value: 219, name: "Picton Blue", hex: "#55aaff" },
+            { value: 220, name: "Bright Green", hex: "#55ff00" },
+            { value: 221, name: "Screamin' Green", hex: "#55ff55" },
+            { value: 222, name: "Medium Aquamarine", hex: "#55ffaa" },
+            { value: 223, name: "Electric Blue", hex: "#55ffff" },
+            { value: 224, name: "Dark Candy Apple Red", hex: "#aa0000" },
+            { value: 225, name: "Jazzberry Jam", hex: "#aa0055" },
+            { value: 226, name: "Purple", hex: "#aa00aa" },
+            { value: 227, name: "Vivid Violet", hex: "#aa00ff" },
+            { value: 228, name: "Windsor Tan", hex: "#aa5500" },
+            { value: 229, name: "Rose Vale", hex: "#aa5555" },
+            { value: 230, name: "Purpureus", hex: "#aa55aa" },
+            { value: 231, name: "Lavender Indigo", hex: "#aa55ff" },
+            { value: 232, name: "Limerick", hex: "#aaaa00" },
+            { value: 233, name: "Brass", hex: "#aaaa55" },
+            { value: 234, name: "Light Gray", hex: "#aaaaaa" },
+            { value: 235, name: "Baby Blue Eyes", hex: "#aaaaff" },
+            { value: 236, name: "Spring Bud", hex: "#aaff00" },
+            { value: 237, name: "Inchworm", hex: "#aaff55" },
+            { value: 238, name: "Mint Green", hex: "#aaffaa" },
+            { value: 239, name: "Celeste", hex: "#aaffff" },
+            { value: 240, name: "Red", hex: "#ff0000" },
+            { value: 241, name: "Folly", hex: "#ff0055" },
+            { value: 242, name: "Fashion Magenta", hex: "#ff00aa" },
+            { value: 243, name: "Magenta", hex: "#ff00ff" },
+            { value: 244, name: "Orange", hex: "#ff5500" },
+            { value: 245, name: "Sunset Orange", hex: "#ff5555" },
+            { value: 246, name: "Brilliant Rose", hex: "#ff55aa" },
+            { value: 247, name: "Shocking Pink", hex: "#ff55ff" },
+            { value: 248, name: "Chrome Yellow", hex: "#ffaa00" },
+            { value: 249, name: "Rajah", hex: "#ffaa55" },
+            { value: 250, name: "Melon", hex: "#ffaaaa" },
+            { value: 251, name: "Rich Brilliant Lavender", hex: "#ffaaff" },
+            { value: 252, name: "Yellow", hex: "#ffff00" },
+            { value: 253, name: "Pastel Yellow", hex: "#ffff55" },
+            { value: 254, name: "Icterine", hex: "#ffffaa" },
+            { value: 255, name: "White", hex: "#ffffff" }
+        ];
+
+        // Global State variables
+        let pdc = {
+            type: "sequence",
+            version: 1,
+            viewBox: { width: 64, height: 64 },
+            playCount: 65535,
+            frames: []
+        };
+        
+        let currentFrameIndex = 0;
+        let isPlaying = true;
+        let playSpeed = 1.0;
+        let activeScaleMode = "fit"; // "fit", "actual", "custom"
+        let customZoomLevel = 3.5;
+        let panX = 0;
+        let panY = 0;
+        let showGrid = true;
+        
+        let selectedCommandIndex = null;
+        let selectedPointIndex = null;
+        let activePickerType = "stroke"; // "stroke" or "fill"
+        let activePickerAlphaBits = 3; // Opaque
+        
+        // Drag-and-drop point coordinates variables
+        let isDraggingPoint = false;
+        let dragPointIndex = -1;
+        let dragCommandIndex = -1;
+
+        // Interactive dragging of viewport
+        let isPanningViewport = false;
+        let lastMouseX = 0;
+        let lastMouseY = 0;
+
+        // Frame timing loops
+        let lastTickTime = 0;
+        let accumulatedPlayTime = 0;
+
+        // DOM elements
+        let canvas = document.getElementById("pebble-lcd-canvas");
+        let ctx = canvas.getContext("2d");
+
+        const PRESETS = {
+            pulsingHeart: {
+                type: "sequence",
+                version: 1,
+                viewBox: { width: 64, height: 64 },
+                playCount: 65535,
+                frames: [
+                    {
+                        duration: 350,
+                        commands: [
+                            {
+                                type: 1, // Path
+                                flags: 0,
+                                strokeColor: 255, // GColorWhite
+                                strokeWidth: 2,
+                                fillColor: 240, // GColorRed
+                                open: false,
+                                points: [
+                                    { x: 32, y: 52 },
+                                    { x: 14, y: 34 },
+                                    { x: 14, y: 22 },
+                                    { x: 23, y: 14 },
+                                    { x: 32, y: 23 },
+                                    { x: 41, y: 14 },
+                                    { x: 50, y: 22 },
+                                    { x: 50, y: 34 }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        duration: 150,
+                        commands: [
+                            {
+                                type: 1,
+                                flags: 0,
+                                strokeColor: 255,
+                                strokeWidth: 3,
+                                fillColor: 247, // GColorShockingPink
+                                open: false,
+                                points: [
+                                    { x: 32, y: 56 },
+                                    { x: 10, y: 34 },
+                                    { x: 10, y: 20 },
+                                    { x: 21, y: 10 },
+                                    { x: 32, y: 21 },
+                                    { x: 43, y: 10 },
+                                    { x: 54, y: 20 },
+                                    { x: 54, y: 34 }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        duration: 350,
+                        commands: [
+                            {
+                                type: 1,
+                                flags: 0,
+                                strokeColor: 255,
+                                strokeWidth: 2,
+                                fillColor: 240,
+                                open: false,
+                                points: [
+                                    { x: 32, y: 52 },
+                                    { x: 14, y: 34 },
+                                    { x: 14, y: 22 },
+                                    { x: 23, y: 14 },
+                                    { x: 32, y: 23 },
+                                    { x: 41, y: 14 },
+                                    { x: 50, y: 22 },
+                                    { x: 50, y: 34 }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            },
+            spinningStar: {
+                type: "sequence",
+                version: 1,
+                viewBox: { width: 64, height: 64 },
+                playCount: 65535,
+                frames: Array.from({ length: 8 }, (_, i) => {
+                    const angleOffset = (i * Math.PI) / 4;
+                    const points = [];
+                    for (let p = 0; p < 10; p++) {
+                        const angle = (p * Math.PI) / 5 + angleOffset;
+                        const r = p % 2 === 0 ? 22 : 9;
+                        points.push({
+                            x: Math.round(32 + r * Math.sin(angle)),
+                            y: Math.round(32 - r * Math.cos(angle))
+                        });
+                    }
+                    return {
+                        duration: 90,
+                        commands: [
+                            {
+                                type: 3, // Precise Path
+                                flags: 0,
+                                strokeColor: 248, // GColorChromeYellow
+                                strokeWidth: 2,
+                                fillColor: 252, // GColorYellow
+                                open: false,
+                                points: points
+                            }
+                        ]
+                    };
+                })
+            },
+            solarOrbit: {
+                type: "sequence",
+                version: 1,
+                viewBox: { width: 64, height: 64 },
+                playCount: 65535,
+                frames: Array.from({ length: 12 }, (_, i) => {
+                    const angle = (i * 2 * Math.PI) / 12;
+                    const planetX = Math.round(32 + 18 * Math.cos(angle));
+                    const planetY = Math.round(32 + 18 * Math.sin(angle));
+                    return {
+                        duration: 80,
+                        commands: [
+                            // Main orbit route circle
+                            {
+                                type: 2, // Circle
+                                flags: 0,
+                                strokeColor: 218, // GColorCadetBlue
+                                strokeWidth: 1,
+                                fillColor: 0, // Clear
+                                open: false,
+                                radius: 18,
+                                points: [{ x: 32, y: 32 }]
+                            },
+                            // Central Sun
+                            {
+                                type: 2,
+                                flags: 0,
+                                strokeColor: 244, // GColorOrange
+                                strokeWidth: 2,
+                                fillColor: 252, // GColorYellow
+                                open: false,
+                                radius: 7,
+                                points: [{ x: 32, y: 32 }]
+                            },
+                            // Orbiting Planet
+                            {
+                                type: 2,
+                                flags: 0,
+                                strokeColor: 255, // GColorWhite
+                                strokeWidth: 1,
+                                fillColor: 203, // GColorVividCerulean
+                                open: false,
+                                radius: 4,
+                                points: [{ x: planetX, y: planetY }]
+                            }
+                        ]
+                    };
+                })
+            },
+            blank: {
+                type: "image",
+                version: 1,
+                viewBox: { width: 64, height: 64 },
+                commands: [
+                    {
+                        type: 2,
+                        flags: 0,
+                        strokeColor: 255,
+                        strokeWidth: 2,
+                        fillColor: 201, // Jaeger Green
+                        open: false,
+                        radius: 12,
+                        points: [{ x: 32, y: 32 }]
+                    }
+                ]
+            }
+        };
+
+        function getCssColor(gcolor) {
+            const a = (gcolor >> 6) & 0x03;
+            const r = (gcolor >> 4) & 0x03;
+            const g = (gcolor >> 2) & 0x03;
+            const b = gcolor & 0x03;
+            
+            if (a === 0) return "rgba(0,0,0,0)";
+            
+            const red = Math.round(r * 85);
+            const green = Math.round(g * 85);
+            const blue = Math.round(b * 85);
+            const opacity = a / 3;
+            
+            return `rgba(${red}, ${green}, ${blue}, ${opacity})`;
+        }
+
+        function getColorDetailsByByte(gcolor) {
+            const colorIndex = gcolor & 0x3F;
+            const alphaBits = (gcolor >> 6) & 0x03;
+            
+            const baseColor = PEBBLE_COLORS.find(c => (c.value & 0x3F) === colorIndex);
+            if (!baseColor) return { name: "GColorClear", hex: "#000000", opacity: 0 };
+            
+            return {
+                name: baseColor.name,
+                hex: baseColor.hex,
+                opacity: alphaBits / 3
+            };
+        }
+
+        function parsePdcBinary(arrayBuffer) {
+            const view = new DataView(arrayBuffer);
+            const decoder = new TextDecoder('ascii');
+            
+            if (arrayBuffer.byteLength < 8) {
+                throw new Error("Invalid file: too small to be a Pebble draw command.");
+            }
+            
+            const magic = decoder.decode(new Uint8Array(arrayBuffer, 0, 4));
+            const size = view.getUint32(4, true);
+            
+            if (magic !== "PDCI" && magic !== "PDCS") {
+                throw new Error("Invalid file signature: " + magic);
+            }
+            
+            const version = view.getUint8(8);
+            const reserved = view.getUint8(9);
+            const viewBoxWidth = view.getInt16(10, true);
+            const viewBoxHeight = view.getInt16(12, true);
+            
+            const parsedPdc = {
+                type: magic === "PDCI" ? "image" : "sequence",
+                version: version,
+                viewBox: { width: viewBoxWidth, height: viewBoxHeight }
+            };
+            
+            if (parsedPdc.type === "image") {
+                const { commands } = parseCommandList(view, 14);
+                parsedPdc.commands = commands;
+            } else {
+                const playCount = view.getUint16(14, true);
+                const frameCount = view.getUint16(16, true);
+                parsedPdc.playCount = playCount;
+                parsedPdc.frameCount = frameCount;
+                
+                let offset = 18;
+                const frames = [];
+                for (let i = 0; i < frameCount; i++) {
+                    if (offset >= view.byteLength) break;
+                    const duration = view.getUint16(offset, true);
+                    const { commands, bytesRead } = parseCommandList(view, offset + 2);
+                    frames.push({
+                        duration: duration,
+                        commands: commands
+                    });
+                    offset += 2 + bytesRead;
+                }
+                parsedPdc.frames = frames;
+            }
+            
+            return parsedPdc;
+        }
+
+        function parseCommandList(view, startOffset) {
+            let offset = startOffset;
+            const numCommands = view.getUint16(offset, true);
+            offset += 2;
+            
+            const commands = [];
+            for (let i = 0; i < numCommands; i++) {
+                if (offset >= view.byteLength) break;
+                
+                const type = view.getUint8(offset);
+                const flags = view.getUint8(offset + 1);
+                const strokeColor = view.getUint8(offset + 2);
+                const strokeWidth = view.getUint8(offset + 3);
+                const fillColor = view.getUint8(offset + 4);
+                const pathOpenOrRadius = view.getUint16(offset + 5, true);
+                const numPoints = view.getUint16(offset + 7, true);
+                offset += 9;
+                
+                const points = [];
+                for (let p = 0; p < numPoints; p++) {
+                    if (offset + 4 > view.byteLength) break;
+                    let x = view.getInt16(offset, true);
+                    let y = view.getInt16(offset + 2, true);
+                    offset += 4;
+                    
+                    if (type === 3) { // Precise Path uses 13.3 fixed point division
+                        x = x / 8.0;
+                        y = y / 8.0;
+                    }
+                    points.push({ x, y });
+                }
+                
+                commands.push({
+                    type,
+                    flags,
+                    strokeColor,
+                    strokeWidth,
+                    fillColor,
+                    open: type === 2 ? false : (pathOpenOrRadius & 1) === 1,
+                    radius: type === 2 ? pathOpenOrRadius : undefined,
+                    points
+                });
+            }
+            
+            return { commands, bytesRead: offset - startOffset };
+        }
+
+        function serializePdcBinary(pdcObj) {
+            const bytes = [];
+            
+            // Magic Code
+            const magic = pdcObj.type === "image" ? "PDCI" : "PDCS";
+            for (let i = 0; i < 4; i++) {
+                bytes.push(magic.charCodeAt(i));
+            }
+            
+            // Placeholder for size (updated at end)
+            bytes.push(0, 0, 0, 0);
+            
+            // Version & Reserved
+            bytes.push(pdcObj.version || 1);
+            bytes.push(0); // Reserved
+            
+            // Viewbox
+            write16(pdcObj.viewBox.width);
+            write16(pdcObj.viewBox.height);
+            
+            if (pdcObj.type === "image") {
+                writeCommandList(pdcObj.commands);
+            } else {
+                write16(pdcObj.playCount || 65535);
+                write16(pdcObj.frames.length);
+                for (const frame of pdcObj.frames) {
+                    write16(frame.duration || 100);
+                    writeCommandList(frame.commands);
+                }
+            }
+            
+            // Size patching
+            const payloadSize = bytes.length - 8;
+            bytes[4] = payloadSize & 0xFF;
+            bytes[5] = (payloadSize >> 8) & 0xFF;
+            bytes[6] = (payloadSize >> 16) & 0xFF;
+            bytes[7] = (payloadSize >> 24) & 0xFF;
+            
+            return new Uint8Array(bytes).buffer;
+            
+            function write16(val) {
+                bytes.push(val & 0xFF);
+                bytes.push((val >> 8) & 0xFF);
+            }
+            
+            function writeCommandList(commands) {
+                write16(commands.length);
+                for (const cmd of commands) {
+                    bytes.push(cmd.type);
+                    bytes.push(cmd.flags || 0);
+                    bytes.push(cmd.strokeColor);
+                    bytes.push(cmd.strokeWidth);
+                    bytes.push(cmd.fillColor);
+                    
+                    if (cmd.type === 2) {
+                        write16(cmd.radius || 0);
+                    } else {
+                        write16(cmd.open ? 1 : 0);
+                    }
+                    
+                    write16(cmd.points.length);
+                    for (const pt of cmd.points) {
+                        let x = pt.x;
+                        let y = pt.y;
+                        
+                        if (cmd.type === 3) { // Precise Path uses 13.3 scale multiplication
+                            x = Math.round(x * 8);
+                            y = Math.round(y * 8);
+                        } else {
+                            x = Math.round(x);
+                            y = Math.round(y);
+                        }
+                        
+                        write16(x);
+                        write16(y);
+                    }
+                }
+            }
+        }
+
+        function parseSvgPathD(d) {
+            const points = [];
+            const commands = d.match(/[a-df-z]+/gi) || [];
+            const args = d.split(/[a-df-z]+/gi) || [];
+            if (args[0] === "") args.shift();
+            
+            let curX = 0, curY = 0;
+            let startX = 0, startY = 0;
+            let isOpen = true;
+            
+            for (let i = 0; i < commands.length; i++) {
+                const cmd = commands[i].trim();
+                const argStr = args[i] ? args[i].trim() : "";
+                const nums = argStr.split(/[\s,]+/).map(parseFloat).filter(n => !isNaN(n));
+                
+                if (cmd === "M" || cmd === "m") {
+                    let x = nums[0];
+                    let y = nums[1];
+                    if (cmd === "m") { x += curX; y += curY; }
+                    points.push({ x, y });
+                    curX = x; curY = y;
+                    startX = x; startY = y;
+                } else if (cmd === "L" || cmd === "l") {
+                    for (let j = 0; j < nums.length; j += 2) {
+                        if (j + 1 >= nums.length) break;
+                        let x = nums[j];
+                        let y = nums[j+1];
+                        if (cmd === "l") { x += curX; y += curY; }
+                        points.push({ x, y });
+                        curX = x; curY = y;
+                    }
+                } else if (cmd === "H" || cmd === "h") {
+                    for (let j = 0; j < nums.length; j++) {
+                        let x = nums[j];
+                        if (cmd === "h") x += curX;
+                        points.push({ x, y: curY });
+                        curX = x;
+                    }
+                } else if (cmd === "V" || cmd === "v") {
+                    for (let j = 0; j < nums.length; j++) {
+                        let y = nums[j];
+                        if (cmd === "v") y += curY;
+                        points.push({ x: curX, y });
+                        curY = y;
+                    }
+                } else if (cmd === "C" || cmd === "c") {
+                    for (let j = 0; j < nums.length; j += 6) {
+                        if (j + 5 >= nums.length) break;
+                        let cp1x = nums[j], cp1y = nums[j+1];
+                        let cp2x = nums[j+2], cp2y = nums[j+3];
+                        let destX = nums[j+4], destY = nums[j+5];
+                        if (cmd === "c") {
+                            cp1x += curX; cp1y += curY;
+                            cp2x += curX; cp2y += curY;
+                            destX += curX; destY += curY;
+                        }
+                        // Sample 8 straight linear nodes per curve
+                        for (let t = 1; t <= 8; t++) {
+                            const ratio = t / 8;
+                            const mt = 1 - ratio;
+                            const px = mt*mt*mt*curX + 3*mt*mt*ratio*cp1x + 3*mt*ratio*ratio*cp2x + ratio*ratio*ratio*destX;
+                            const py = mt*mt*mt*curY + 3*mt*mt*ratio*cp1y + 3*mt*ratio*ratio*cp2y + ratio*ratio*ratio*destY;
+                            points.push({ x: px, y: py });
+                        }
+                        curX = destX; curY = destY;
+                    }
+                } else if (cmd === "Q" || cmd === "q") {
+                    for (let j = 0; j < nums.length; j += 4) {
+                        if (j + 3 >= nums.length) break;
+                        let cpx = nums[j], cpy = nums[j+1];
+                        let destX = nums[j+2], destY = nums[j+3];
+                        if (cmd === "q") {
+                            cpx += curX; cpy += curY;
+                            destX += curX; destY += curY;
+                        }
+                        for (let t = 1; t <= 8; t++) {
+                            const ratio = t / 8;
+                            const mt = 1 - ratio;
+                            const px = mt*mt*curX + 2*mt*ratio*cpx + ratio*ratio*destX;
+                            const py = mt*mt*curY + 2*mt*ratio*cpy + ratio*ratio*destY;
+                            points.push({ x: px, y: py });
+                        }
+                        curX = destX; curY = destY;
+                    }
+                } else if (cmd === "Z" || cmd === "z") {
+                    isOpen = false;
+                    if (points.length > 0 && (Math.abs(curX - startX) > 0.01 || Math.abs(curY - startY) > 0.01)) {
+                        points.push({ x: startX, y: startY });
+                    }
+                }
+            }
+            return { points, open: isOpen };
+        }
+
+        function parseSvgColorByte(cssColorStr, defaultColor = 255) {
+            if (!cssColorStr || cssColorStr === "none" || cssColorStr === "transparent") {
+                return 0; // Transparent
+            }
+            
+            // Resolve CSS named or custom colors
+            const dummy = document.createElement("div");
+            dummy.style.color = cssColorStr;
+            document.body.appendChild(dummy);
+            const rgbString = window.getComputedStyle(dummy).color;
+            document.body.removeChild(dummy);
+            
+            const match = rgbString.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
+            if (match) {
+                const r = parseInt(match[1]);
+                const g = parseInt(match[2]);
+                const b = parseInt(match[3]);
+                const a = match[4] !== undefined ? parseFloat(match[4]) : 1.0;
+                
+                const pR = Math.min(3, Math.max(0, Math.round(r / 85)));
+                const pG = Math.min(3, Math.max(0, Math.round(g / 85)));
+                const pB = Math.min(3, Math.max(0, Math.round(b / 85)));
+                const pA = Math.min(3, Math.max(0, Math.round(a * 3)));
+                
+                return (pA << 6) | (pR << 4) | (pG << 2) | pB;
+            }
+            return defaultColor;
+        }
+
+        function importSvgFile(svgText) {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(svgText, "image/svg+xml");
+            const svgNode = doc.querySelector("svg");
+            
+            if (!svgNode) throw new Error("File contains no valid SVG nodes.");
+            
+            let w = 64, h = 64;
+            if (svgNode.hasAttribute("viewBox")) {
+                const parts = svgNode.getAttribute("viewBox").trim().split(/[\s,]+/);
+                if (parts.length >= 4) {
+                    w = Math.round(parseFloat(parts[2]));
+                    h = Math.round(parseFloat(parts[3]));
+                }
+            } else {
+                w = Math.round(parseFloat(svgNode.getAttribute("width"))) || 64;
+                h = Math.round(parseFloat(svgNode.getAttribute("height"))) || 64;
+            }
+            
+            const newPdc = {
+                type: "image",
+                version: 1,
+                viewBox: { width: w, height: h },
+                commands: []
+            };
+            
+            // Collect path and circle elements
+            const shapeNodes = svgNode.querySelectorAll("path, circle, polygon, polyline, line, rect");
+            shapeNodes.forEach(node => {
+                const tag = node.tagName.toLowerCase();
+                const strokeVal = node.getAttribute("stroke");
+                const strokeW = Math.round(parseFloat(node.getAttribute("stroke-width"))) || 1;
+                const fillVal = node.getAttribute("fill");
+                
+                const strokeColor = parseSvgColorByte(strokeVal, 255);
+                const fillColor = parseSvgColorByte(fillVal, 0);
+                
+                if (tag === "circle") {
+                    const cx = parseFloat(node.getAttribute("cx")) || 0;
+                    const cy = parseFloat(node.getAttribute("cy")) || 0;
+                    const r = parseFloat(node.getAttribute("r")) || 0;
+                    newPdc.commands.push({
+                        type: 2,
+                        flags: 0,
+                        strokeColor,
+                        strokeWidth: strokeW,
+                        fillColor,
+                        open: false,
+                        radius: Math.round(r),
+                        points: [{ x: cx, y: cy }]
+                    });
+                } else if (tag === "rect") {
+                    const x = parseFloat(node.getAttribute("x")) || 0;
+                    const y = parseFloat(node.getAttribute("y")) || 0;
+                    const rectW = parseFloat(node.getAttribute("width")) || 0;
+                    const rectH = parseFloat(node.getAttribute("height")) || 0;
+                    newPdc.commands.push({
+                        type: 1,
+                        flags: 0,
+                        strokeColor,
+                        strokeWidth: strokeW,
+                        fillColor,
+                        open: false,
+                        points: [
+                            { x: x, y: y },
+                            { x: x + rectW, y: y },
+                            { x: x + rectW, y: y + rectH },
+                            { x: x, y: y + rectH }
+                        ]
+                    });
+                } else if (tag === "polygon" || tag === "polyline") {
+                    const ptPairs = (node.getAttribute("points") || "").trim().split(/[\s,]+/);
+                    const points = [];
+                    for (let p = 0; p < ptPairs.length; p += 2) {
+                        if (p + 1 < ptPairs.length) {
+                            points.push({ x: parseFloat(ptPairs[p]), y: parseFloat(ptPairs[p+1]) });
+                        }
+                    }
+                    newPdc.commands.push({
+                        type: tag === "polygon" ? 3 : 1, // Precise or simple path
+                        flags: 0,
+                        strokeColor,
+                        strokeWidth: strokeW,
+                        fillColor,
+                        open: tag === "polyline",
+                        points
+                    });
+                } else if (tag === "line") {
+                    const x1 = parseFloat(node.getAttribute("x1")) || 0;
+                    const y1 = parseFloat(node.getAttribute("y1")) || 0;
+                    const x2 = parseFloat(node.getAttribute("x2")) || 0;
+                    const y2 = parseFloat(node.getAttribute("y2")) || 0;
+                    newPdc.commands.push({
+                        type: 1,
+                        flags: 0,
+                        strokeColor,
+                        strokeWidth: strokeW,
+                        fillColor: 0,
+                        open: true,
+                        points: [{ x: x1, y: y1 }, { x: x2, y: y2 }]
+                    });
+                } else if (tag === "path") {
+                    const d = node.getAttribute("d") || "";
+                    const { points, open } = parseSvgPathD(d);
+                    if (points.length > 0) {
+                        newPdc.commands.push({
+                            type: 3, // Use precise paths for parsed custom SVGs
+                            flags: 0,
+                            strokeColor,
+                            strokeWidth: strokeW,
+                            fillColor,
+                            open,
+                            points
+                        });
+                    }
+                }
+            });
+            
+            return newPdc;
+        }
+
+        function getCanvasZoomParameters() {
+            const vbW = pdc.viewBox.width || 64;
+            const vbH = pdc.viewBox.height || 64;
+            const cw = canvas.width;
+            const ch = canvas.height;
+            
+            let scale = 1;
+            let tx = 0, ty = 0;
+            
+            if (activeScaleMode === "fit") {
+                scale = Math.min(cw / vbW, ch / vbH) * 0.95;
+                tx = (cw - vbW * scale) / 2;
+                ty = (ch - vbH * scale) / 2;
+            } else if (activeScaleMode === "actual") {
+                scale = 1;
+                tx = (cw - vbW) / 2;
+                ty = (ch - vbH) / 2;
+            } else {
+                scale = customZoomLevel;
+                tx = cw / 2 + panX - (vbW / 2) * scale;
+                ty = ch / 2 + panY - (vbH / 2) * scale;
+            }
+            
+            return { scale, tx, ty };
+        }
+
+        function drawWorkspace() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            const vbW = pdc.viewBox.width || 64;
+            const vbH = pdc.viewBox.height || 64;
+            const { scale, tx, ty } = getCanvasZoomParameters();
+            
+            ctx.save();
+            ctx.translate(tx, ty);
+            ctx.scale(scale, scale);
+            
+            // Viewbox boundary
+            ctx.strokeStyle = "rgba(120, 140, 160, 0.45)";
+            ctx.lineWidth = 1.2 / scale;
+            ctx.setLineDash([4 / scale, 4 / scale]);
+            ctx.strokeRect(0, 0, vbW, vbH);
+            ctx.setLineDash([]);
+            
+            // Fine-grained pixel grid
+            if (showGrid && scale >= 4) {
+                ctx.strokeStyle = "rgba(148, 163, 184, 0.12)";
+                ctx.lineWidth = 0.5 / scale;
+                for (let x = 0; x <= vbW; x++) {
+                    ctx.beginPath();
+                    ctx.moveTo(x, 0);
+                    ctx.lineTo(x, vbH);
+                    ctx.stroke();
+                }
+                for (let y = 0; y <= vbH; y++) {
+                    ctx.beginPath();
+                    ctx.moveTo(0, y);
+                    ctx.lineTo(vbW, y);
+                    ctx.stroke();
+                }
+            }
+            
+            // Get commands in active frame
+            let commands = [];
+            if (pdc.type === "image") {
+                commands = pdc.commands || [];
+            } else {
+                const activeFrame = pdc.frames[currentFrameIndex];
+                if (activeFrame) commands = activeFrame.commands || [];
+            }
+            
+            // Render shapes
+            commands.forEach((cmd, cmdIdx) => {
+                if (cmd.flags & 1) return; // Hidden
+                
+                ctx.save();
+                ctx.lineJoin = "round";
+                ctx.lineCap = "round";
+                ctx.lineWidth = cmd.strokeWidth;
+                
+                const fillStyle = getCssColor(cmd.fillColor);
+                const strokeStyle = getCssColor(cmd.strokeColor);
+                
+                // Highlight active command outline
+                if (cmdIdx === selectedCommandIndex) {
+                    ctx.shadowColor = "rgba(249, 115, 22, 0.9)";
+                    ctx.shadowBlur = 8 / scale;
+                }
+                
+                if (cmd.type === 1 || cmd.type === 3) {
+                    if (cmd.points && cmd.points.length > 0) {
+                        ctx.beginPath();
+                        ctx.moveTo(cmd.points[0].x, cmd.points[0].y);
+                        for (let p = 1; p < cmd.points.length; p++) {
+                            ctx.lineTo(cmd.points[p].x, cmd.points[p].y);
+                        }
+                        
+                        if (!cmd.open) {
+                            ctx.closePath();
+                            if (cmd.fillColor !== 0) {
+                                ctx.fillStyle = fillStyle;
+                                ctx.fill();
+                            }
+                        }
+                        
+                        if (cmd.strokeColor !== 0 && cmd.strokeWidth > 0) {
+                            ctx.strokeStyle = strokeStyle;
+                            ctx.stroke();
+                        }
+                    }
+                } else if (cmd.type === 2) {
+                    if (cmd.points && cmd.points.length > 0) {
+                        const center = cmd.points[0];
+                        const r = cmd.radius || 0;
+                        ctx.beginPath();
+                        ctx.arc(center.x, center.y, r, 0, 2 * Math.PI);
+                        
+                        if (cmd.fillColor !== 0) {
+                            ctx.fillStyle = fillStyle;
+                            ctx.fill();
+                        }
+                        
+                        if (cmd.strokeColor !== 0 && cmd.strokeWidth > 0) {
+                            ctx.strokeStyle = strokeStyle;
+                            ctx.stroke();
+                        }
+                    }
+                }
+                
+                ctx.restore();
+                
+                // Draw nodes anchor point overlays
+                if (cmdIdx === selectedCommandIndex && cmd.points) {
+                    cmd.points.forEach((pt, ptIdx) => {
+                        const isSelPt = (ptIdx === selectedPointIndex);
+                        ctx.beginPath();
+                        ctx.arc(pt.x, pt.y, (isSelPt ? 5.5 : 4) / scale, 0, 2 * Math.PI);
+                        ctx.fillStyle = isSelPt ? "#ef4444" : "#3b82f6";
+                        ctx.strokeStyle = "#ffffff";
+                        ctx.lineWidth = 1.2 / scale;
+                        ctx.fill();
+                        ctx.stroke();
+                    });
+                }
+            });
+            
+            ctx.restore();
+        }
+
+        function tick(timestamp) {
+            if (!lastTickTime) lastTickTime = timestamp;
+            const delta = timestamp - lastTickTime;
+            lastTickTime = timestamp;
+            
+            if (isPlaying && pdc.type === "sequence" && pdc.frames.length > 0) {
+                accumulatedPlayTime += delta * playSpeed;
+                const activeFrame = pdc.frames[currentFrameIndex];
+                if (activeFrame) {
+                    const duration = activeFrame.duration || 100;
+                    if (accumulatedPlayTime >= duration) {
+                        accumulatedPlayTime = 0;
+                        currentFrameIndex = (currentFrameIndex + 1) % pdc.frames.length;
+                        syncTimelineUI();
+                    }
+                }
+            }
+            
+            drawWorkspace();
+            requestAnimationFrame(tick);
+        }
+
+        function syncTimelineUI() {
+            const scrubber = document.getElementById("timeline-scrubber");
+            const label = document.getElementById("frame-counter-label");
+            
+            if (pdc.type === "image") {
+                scrubber.disabled = true;
+                scrubber.max = 0;
+                scrubber.value = 0;
+                label.textContent = "Static Image";
+                return;
+            }
+            
+            scrubber.disabled = false;
+            scrubber.max = pdc.frames.length - 1;
+            scrubber.value = currentFrameIndex;
+            label.textContent = `Frame ${currentFrameIndex + 1} / ${pdc.frames.length}`;
+            
+            // Re-render frame tabs
+            const tabContainer = document.getElementById("inspector-frame-list");
+            tabContainer.innerHTML = "";
+            pdc.frames.forEach((frame, idx) => {
+                const btn = document.createElement("button");
+                btn.className = `flex-shrink-0 px-2.5 py-1 text-[10px] font-mono rounded font-medium transition ${
+                    idx === currentFrameIndex ? 'bg-orange-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-750'
+                }`;
+                btn.textContent = `F${idx + 1} (${frame.duration}ms)`;
+                btn.onclick = () => {
+                    currentFrameIndex = idx;
+                    accumulatedPlayTime = 0;
+                    syncTimelineUI();
+                    syncActiveFrameInspector();
+                };
+                tabContainer.appendChild(btn);
+            });
+            
+            const activeFrame = pdc.frames[currentFrameIndex];
+            if (activeFrame) {
+                document.getElementById("active-frame-duration").value = activeFrame.duration || 100;
+            }
+        }
+
+        function syncActiveFrameInspector() {
+            const container = document.getElementById("command-list-container");
+            container.innerHTML = "";
+            
+            let commands = [];
+            if (pdc.type === "image") {
+                commands = pdc.commands || [];
+                document.getElementById("file-type-badge").textContent = "PDCI (Image)";
+            } else {
+                const frame = pdc.frames[currentFrameIndex];
+                if (frame) commands = frame.commands || [];
+                document.getElementById("file-type-badge").textContent = "PDCS (Sequence)";
+            }
+            
+            commands.forEach((cmd, idx) => {
+                const strokeColorHex = getColorDetailsByByte(cmd.strokeColor).hex;
+                const fillColorHex = getColorDetailsByByte(cmd.fillColor).hex;
+                
+                const card = document.createElement("div");
+                card.className = `p-2.5 rounded-xl border transition flex items-center justify-between cursor-pointer ${
+                    idx === selectedCommandIndex
+                        ? 'bg-slate-850/90 border-orange-500/80'
+                        : 'bg-slate-950/40 border-slate-850 hover:border-slate-800'
+                }`;
+                card.onclick = (e) => {
+                    // Prevent double selection loops
+                    if (e.target.closest('button')) return;
+                    selectedCommandIndex = idx;
+                    selectedPointIndex = null;
+                    syncActiveFrameInspector();
+                    syncActiveCommandProperties();
+                };
+                
+                const title = cmd.type === 2 ? `Circle (r:${cmd.radius})` : `${cmd.type === 3 ? 'Precise ' : ''}${(cmd.open ? 'Open' : 'Closed')} Path`;
+                
+                card.innerHTML = `
+                    <div class="flex items-center space-x-2">
+                        <span class="text-[10px] font-mono text-slate-500">#${idx + 1}</span>
+                        <div>
+                            <span class="text-xs font-semibold text-slate-300 block">${title}</span>
+                            <span class="text-[9px] text-slate-500 font-mono">${cmd.points ? cmd.points.length : 0} nodes · Width: ${cmd.strokeWidth}</span>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-1.5">
+                        <div class="w-3 h-3 rounded-full border border-slate-700" style="background-color: ${strokeColorHex}" title="Stroke color"></div>
+                        <div class="w-3 h-3 rounded border border-slate-700 relative overflow-hidden" style="background-color: ${cmd.fillColor === 0 ? 'transparent' : fillColorHex}" title="Fill color">
+                            ${cmd.fillColor === 0 ? '<div class="absolute inset-0 bg-red-500/10 flex items-center justify-center text-[6px] text-red-500 font-bold">X</div>' : ''}
+                        </div>
+                        <button onclick="moveCommandDepth(${idx}, -1)" class="w-5 h-5 rounded bg-slate-900 hover:bg-slate-850 text-slate-400 flex items-center justify-center" title="Move Up"><i class="fa-solid fa-angle-up text-[10px]"></i></button>
+                        <button onclick="moveCommandDepth(${idx}, 1)" class="w-5 h-5 rounded bg-slate-900 hover:bg-slate-850 text-slate-400 flex items-center justify-center" title="Move Down"><i class="fa-solid fa-angle-down text-[10px]"></i></button>
+                        <button onclick="deleteCommand(${idx})" class="w-5 h-5 rounded bg-red-950/60 hover:bg-red-900 text-red-400 flex items-center justify-center" title="Delete command"><i class="fa-solid fa-trash-can text-[10px]"></i></button>
+                    </div>
+                `;
+                
+                container.appendChild(card);
+            });
+            
+            syncActiveCommandProperties();
+        }
+
+        function syncActiveCommandProperties() {
+            const panel = document.getElementById("active-command-properties-panel");
+            if (selectedCommandIndex === null) {
+                panel.classList.add("hidden");
+                return;
+            }
+            
+            let commands = [];
+            if (pdc.type === "image") {
+                commands = pdc.commands || [];
+            } else {
+                const frame = pdc.frames[currentFrameIndex];
+                if (frame) commands = frame.commands || [];
+            }
+            
+            const cmd = commands[selectedCommandIndex];
+            if (!cmd) {
+                selectedCommandIndex = null;
+                panel.classList.add("hidden");
+                return;
+            }
+            
+            panel.classList.remove("hidden");
+            document.getElementById("selected-command-index-tag").textContent = `#${selectedCommandIndex + 1} (${cmd.type === 2 ? 'Circle' : 'Path'})`;
+            
+            document.getElementById("cmd-stroke-width").value = cmd.strokeWidth;
+            document.getElementById("cmd-open-path").checked = cmd.open;
+            document.getElementById("cmd-hidden").checked = (cmd.flags & 1) === 1;
+            
+            const radiusInput = document.getElementById("cmd-radius");
+            const radiusLabel = document.getElementById("cmd-radius-label");
+            if (cmd.type === 2) {
+                radiusInput.classList.remove("hidden");
+                radiusLabel.classList.remove("hidden");
+                radiusInput.value = cmd.radius || 0;
+            } else {
+                radiusInput.classList.add("hidden");
+                radiusLabel.classList.add("hidden");
+            }
+            
+            // Sync colors button previews
+            const strokeInfo = getColorDetailsByByte(cmd.strokeColor);
+            document.getElementById("stroke-color-name").textContent = strokeInfo.name;
+            document.getElementById("stroke-color-preview").style.backgroundColor = strokeInfo.hex;
+            
+            const fillInfo = getColorDetailsByByte(cmd.fillColor);
+            const fillPreview = document.getElementById("fill-color-preview");
+            if (cmd.fillColor === 0) {
+                document.getElementById("fill-color-name").textContent = "GColorClear";
+                fillPreview.style.backgroundColor = "transparent";
+                fillPreview.innerHTML = '<div class="absolute inset-0 bg-red-500/20 flex items-center justify-center text-[8px] font-bold text-red-500">X</div>';
+            } else {
+                document.getElementById("fill-color-name").textContent = fillInfo.name;
+                fillPreview.style.backgroundColor = fillInfo.hex;
+                fillPreview.innerHTML = "";
+            }
+            
+            // Render points editable list
+            const coordinatesContainer = document.getElementById("coordinates-editor-list");
+            coordinatesContainer.innerHTML = "";
+            
+            if (cmd.points) {
+                cmd.points.forEach((pt, ptIdx) => {
+                    const row = document.createElement("div");
+                    row.className = `flex items-center space-x-1.5 p-1 rounded transition ${
+                        ptIdx === selectedPointIndex ? 'bg-slate-850' : ''
+                    }`;
+                    row.onclick = () => {
+                        selectedPointIndex = ptIdx;
+                        // Light up selected point anchor
+                        syncActiveCommandProperties();
+                    };
+                    
+                    row.innerHTML = `
+                        <span class="text-[9px] font-mono text-slate-500 w-5">P${ptIdx + 1}</span>
+                        <div class="flex items-center space-x-1 flex-1">
+                            <span class="text-[9px] text-slate-500">X:</span>
+                            <input type="number" step="${cmd.type === 3 ? '0.1' : '1'}" value="${pt.x}" oninput="updatePointCoordinate(${ptIdx}, 'x', this.value)" class="w-full bg-slate-900 border border-slate-800 rounded text-[10px] py-0.5 px-1 text-slate-200">
+                            <span class="text-[9px] text-slate-500">Y:</span>
+                            <input type="number" step="${cmd.type === 3 ? '0.1' : '1'}" value="${pt.y}" oninput="updatePointCoordinate(${ptIdx}, 'y', this.value)" class="w-full bg-slate-900 border border-slate-800 rounded text-[10px] py-0.5 px-1 text-slate-200">
+                        </div>
+                        <button onclick="deletePointFromCommand(${ptIdx})" class="w-5 h-5 rounded hover:bg-red-950 text-slate-500 hover:text-red-400 flex items-center justify-center" title="Delete node"><i class="fa-solid fa-xmark text-[10px]"></i></button>
+                    `;
+                    coordinatesContainer.appendChild(row);
+                });
+            }
+        }
+
+        function loadPdcData(parsed) {
+            pdc = parsed;
+            currentFrameIndex = 0;
+            selectedCommandIndex = null;
+            selectedPointIndex = null;
+            
+            document.getElementById("vb-width-input").value = pdc.viewBox.width;
+            document.getElementById("vb-height-input").value = pdc.viewBox.height;
+            document.getElementById("play-count-select").value = pdc.playCount || 65535;
+            
+            if (pdc.type === "image") {
+                isPlaying = false;
+                document.getElementById("play-pause-btn").innerHTML = '<i class="fa-solid fa-play text-xs"></i>';
+                document.getElementById("player-status-badge").innerHTML = '<i class="fa-solid fa-image"></i> Static Image';
+                document.getElementById("player-status-badge").className = "flex items-center gap-1.5 font-medium text-slate-400";
+            } else {
+                isPlaying = true;
+                document.getElementById("play-pause-btn").innerHTML = '<i class="fa-solid fa-pause text-xs"></i>';
+                document.getElementById("player-status-badge").innerHTML = '<i class="fa-solid fa-circle-play animate-pulse"></i> Playing';
+                document.getElementById("player-status-badge").className = "flex items-center gap-1.5 font-medium text-orange-400";
+            }
+            
+            showToast("Successfully loaded Pebble PDC resource!", "success");
+            syncTimelineUI();
+            syncActiveFrameInspector();
+        }
+
+        function handlePdcUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const parsed = parsePdcBinary(e.target.result);
+                    loadPdcData(parsed);
+                } catch(err) {
+                    showToast("Error parsing binary: " + err.message, "error");
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function handleSvgUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const parsed = importSvgFile(e.target.result);
+                    loadPdcData(parsed);
+                } catch(err) {
+                    showToast("Error parsing SVG: " + err.message, "error");
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function generateAnimatedSvgString() {
+            const vbW = pdc.viewBox.width || 64;
+            const vbH = pdc.viewBox.height || 64;
+            let svg = `<?xml version="1.0" encoding="utf-8"?>\n`;
+            svg += `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${vbW} ${vbH}" width="${vbW}" height="${vbH}">\n`;
+            
+            if (pdc.type === "image") {
+                pdc.commands.forEach(cmd => {
+                    svg += "  " + getSvgNodeStringForCommand(cmd) + "\n";
+                });
+            } else {
+                const totalDur = pdc.frames.reduce((sum, f) => sum + (f.duration || 100), 0);
+                let currentAccum = 0;
+                
+                pdc.frames.forEach((frame, frameIdx) => {
+                    const startRatio = currentAccum / totalDur;
+                    const frameDur = frame.duration || 100;
+                    const endRatio = (currentAccum + frameDur) / totalDur;
+                    currentAccum += frameDur;
+                    
+                    // Group frame commands inside displaying animator container
+                    let displayVal = "none";
+                    let animateKeyTimes = "";
+                    let animateValues = "";
+                    
+                    if (startRatio === 0) {
+                        animateKeyTimes = `0; ${endRatio}; ${endRatio}; 1`;
+                        animateValues = "inline; inline; none; none";
+                    } else if (endRatio === 1) {
+                        animateKeyTimes = `0; ${startRatio}; ${startRatio}; 1`;
+                        animateValues = "none; none; inline; inline";
+                    } else {
+                        animateKeyTimes = `0; ${startRatio}; ${startRatio}; ${endRatio}; ${endRatio}; 1`;
+                        animateValues = "none; none; inline; inline; none; none";
+                    }
+                    
+                    svg += `  <g id="frame_${frameIdx}" display="none">\n`;
+                    svg += `    <animate attributeName="display" values="${animateValues}" keyTimes="${animateKeyTimes}" dur="${totalDur}ms" repeatCount="indefinite" />\n`;
+                    
+                    frame.commands.forEach(cmd => {
+                        svg += "    " + getSvgNodeStringForCommand(cmd) + "\n";
+                    });
+                    
+                    svg += `  </g>\n`;
+                });
+            }
+            
+            svg += `</svg>`;
+            return svg;
+        }
+
+        function getSvgNodeStringForCommand(cmd) {
+            if (cmd.flags & 1) return ""; // Skip hidden
+            
+            const strokeInfo = getColorDetailsByByte(cmd.strokeColor);
+            const fillInfo = getColorDetailsByByte(cmd.fillColor);
+            
+            const strokeStr = cmd.strokeColor === 0 ? "none" : strokeInfo.hex;
+            const fillStr = cmd.fillColor === 0 ? "none" : fillInfo.hex;
+            const strokeOpacity = cmd.strokeColor === 0 ? 0 : strokeInfo.opacity;
+            const fillOpacity = cmd.fillColor === 0 ? 0 : fillInfo.opacity;
+            
+            let extraStyle = "";
+            if (strokeOpacity < 1 && strokeOpacity > 0) extraStyle += ` stroke-opacity="${strokeOpacity}"`;
+            if (fillOpacity < 1 && fillOpacity > 0) extraStyle += ` fill-opacity="${fillOpacity}"`;
+            
+            if (cmd.type === 2) {
+                const pt = cmd.points[0] || { x: 0, y: 0 };
+                return `<circle cx="${pt.x}" cy="${pt.y}" r="${cmd.radius || 0}" stroke="${strokeStr}" stroke-width="${cmd.strokeWidth}" fill="${fillStr}"${extraStyle} />`;
+            } else {
+                if (!cmd.points || cmd.points.length === 0) return "";
+                let dStr = `M ${cmd.points[0].x} ${cmd.points[0].y}`;
+                for (let p = 1; p < cmd.points.length; p++) {
+                    dStr += ` L ${cmd.points[p].x} ${cmd.points[p].y}`;
+                }
+                if (!cmd.open) dStr += " Z";
+                return `<path d="${dStr}" stroke="${strokeStr}" stroke-width="${cmd.strokeWidth}" fill="${fillStr}"${extraStyle} />`;
+            }
+        }
+
+        function exportBinaryPdc() {
+            try {
+                const buffer = serializePdcBinary(pdc);
+                const blob = new Blob([buffer], { type: "application/octet-stream" });
+                const link = document.createElement("a");
+                link.href = URL.createObjectURL(blob);
+                link.download = `pebble_anim_${pdc.type}.pdc`;
+                link.click();
+                showToast("PDC Binary file exported!", "success");
+            } catch(e) {
+                showToast("Export failed: " + e.message, "error");
+            }
+        }
+
+        function exportAnimatedSvg() {
+            try {
+                const svgText = generateAnimatedSvgString();
+                const blob = new Blob([svgText], { type: "image/svg+xml" });
+                const link = document.createElement("a");
+                link.href = URL.createObjectURL(blob);
+                link.download = `pebble_anim_${pdc.type}.svg`;
+                link.click();
+                showToast("Animated SVG file exported!", "success");
+            } catch(e) {
+                showToast("SVG Export failed: " + e.message, "error");
+            }
+        }
+
+        function updatePointCoordinate(ptIdx, axis, value) {
+            let val = parseFloat(value);
+            if (isNaN(val)) return;
+            
+            let commands = [];
+            if (pdc.type === "image") {
+                commands = pdc.commands || [];
+            } else {
+                const frame = pdc.frames[currentFrameIndex];
+                if (frame) commands = frame.commands || [];
+            }
+            
+            const cmd = commands[selectedCommandIndex];
+            if (cmd && cmd.points && cmd.points[ptIdx]) {
+                // Precise paths support subpixel floats, others round
+                cmd.points[ptIdx][axis] = cmd.type === 3 ? val : Math.round(val);
+            }
+        }
+
+        function deletePointFromCommand(ptIdx) {
+            let commands = [];
+            if (pdc.type === "image") {
+                commands = pdc.commands || [];
+            } else {
+                const frame = pdc.frames[currentFrameIndex];
+                if (frame) commands = frame.commands || [];
+            }
+            
+            const cmd = commands[selectedCommandIndex];
+            if (cmd && cmd.points && cmd.points.length > 1) {
+                cmd.points.splice(ptIdx, 1);
+                selectedPointIndex = null;
+                syncActiveCommandProperties();
+            } else {
+                showToast("A shape must contain at least 1 coordinate point.", "error");
+            }
+        }
+
+        function addPointToCommand() {
+            let commands = [];
+            if (pdc.type === "image") {
+                commands = pdc.commands || [];
+            } else {
+                const frame = pdc.frames[currentFrameIndex];
+                if (frame) commands = frame.commands || [];
+            }
+            
+            const cmd = commands[selectedCommandIndex];
+            if (cmd && cmd.points) {
+                const lastPt = cmd.points[cmd.points.length - 1] || { x: 32, y: 32 };
+                cmd.points.push({ x: lastPt.x + 4, y: lastPt.y + 4 });
+                selectedPointIndex = cmd.points.length - 1;
+                syncActiveCommandProperties();
+            }
+        }
+
+        function setLcdBackground(colorHex) {
+            document.getElementById("lcd-screen-container").style.backgroundColor = colorHex;
+        }
+
+        function togglePixelGrid(checked) {
+            showGrid = checked;
+        }
+
+        function toggleScanlines(checked) {
+            const container = document.getElementById("lcd-screen-container");
+            if (checked) {
+                container.classList.add("lcd-overlay");
+            } else {
+                container.classList.remove("lcd-overlay");
+            }
+        }
+
+        function setScaleMode(mode) {
+            activeScaleMode = mode;
+            
+            document.getElementById("scale-fit-btn").className = `px-2.5 py-1 text-[10px] rounded font-medium ${mode === 'fit' ? 'bg-orange-600 text-white' : 'text-slate-400'}`;
+            document.getElementById("scale-actual-btn").className = `px-2.5 py-1 text-[10px] rounded font-medium ${mode === 'actual' ? 'bg-orange-600 text-white' : 'text-slate-400'}`;
+            document.getElementById("scale-custom-btn").className = `px-2.5 py-1 text-[10px] rounded font-medium ${mode === 'custom' ? 'bg-orange-600 text-white' : 'text-slate-400'}`;
+            
+            const zoomDiv = document.getElementById("zoom-control-div");
+            if (mode === "custom") {
+                zoomDiv.classList.remove("hidden");
+            } else {
+                zoomDiv.classList.add("hidden");
+                panX = 0;
+                panY = 0;
+            }
+        }
+
+        function adjustZoom(amount) {
+            customZoomLevel = Math.min(20, Math.max(0.5, customZoomLevel + amount));
+            document.getElementById("zoom-value-label").textContent = `${customZoomLevel.toFixed(1)}x`;
+        }
+
+        function updateBezelModel() {
+            const model = document.getElementById("bezel-model-select").value;
+            const watch = document.getElementById("pebble-watch-frame");
+            const inner = document.getElementById("bezel-inner");
+            const screen = document.getElementById("lcd-screen-container");
+            
+            if (model === "time") {
+                watch.className = "relative bg-slate-950 border-4 border-slate-700 w-[240px] h-[300px] rounded-[48px] shadow-2xl transition-all flex items-center justify-center";
+                inner.className = "relative w-[190px] h-[220px] bg-slate-900 rounded-[24px] flex flex-col items-center justify-center p-4 border border-slate-800";
+                screen.className = "relative w-[144px] h-[168px] bg-black rounded shadow-md overflow-hidden flex items-center justify-center border border-slate-950 lcd-overlay";
+            } else if (model === "classic") {
+                watch.className = "relative bg-zinc-900 border-4 border-zinc-800 w-[230px] h-[320px] rounded-[20px] shadow-2xl transition-all flex items-center justify-center";
+                inner.className = "relative w-[180px] h-[240px] bg-zinc-950 rounded-[10px] flex flex-col items-center justify-center p-4 border border-zinc-850";
+                screen.className = "relative w-[144px] h-[168px] bg-black rounded shadow-md overflow-hidden flex items-center justify-center border border-zinc-950 lcd-overlay";
+            } else if (model === "round") {
+                watch.className = "relative bg-zinc-900 border-4 border-amber-600 w-[280px] h-[280px] rounded-full shadow-2xl transition-all flex items-center justify-center";
+                inner.className = "relative w-[220px] h-[220px] bg-zinc-950 rounded-full flex flex-col items-center justify-center p-4 border border-zinc-850";
+                screen.className = "relative w-[180px] h-[180px] bg-black rounded-full shadow-md overflow-hidden flex items-center justify-center border border-zinc-950 lcd-overlay";
+            }
+            
+            // Re-resize canvas
+            resizeCanvas();
+        }
+
+        function resizeCanvas() {
+            const parent = document.getElementById("lcd-screen-container");
+            canvas.width = parent.clientWidth;
+            canvas.height = parent.clientHeight;
+        }
+
+        function toggleHelpModal(show) {
+            const modal = document.getElementById("docs-help-modal");
+            if (show) modal.classList.remove("hidden");
+            else modal.classList.add("hidden");
+        }
+
+        function showToast(message, type = "info") {
+            const toast = document.getElementById("toast-banner");
+            const text = document.getElementById("toast-message-text");
+            const icon = document.getElementById("toast-icon-wrapper");
+            
+            text.textContent = message;
+            if (type === "success") {
+                icon.innerHTML = '<i class="fa-solid fa-circle-check text-green-500"></i>';
+            } else if (type === "error") {
+                icon.innerHTML = '<i class="fa-solid fa-circle-exclamation text-red-500"></i>';
+            } else {
+                icon.innerHTML = '<i class="fa-solid fa-circle-info text-blue-500"></i>';
+            }
+            
+            toast.classList.remove("translate-y-20", "opacity-0");
+            setTimeout(() => {
+                toast.classList.add("translate-y-20", "opacity-0");
+            }, 3000);
+        }
+
+        function updateViewBox() {
+            pdc.viewBox.width = Math.max(1, parseInt(document.getElementById("vb-width-input").value)) || 64;
+            pdc.viewBox.height = Math.max(1, parseInt(document.getElementById("vb-height-input").value)) || 64;
+        }
+
+        function updatePlayCount(value) {
+            pdc.playCount = parseInt(value) || 65535;
+        }
+
+        function updateFrameDuration(value) {
+            if (pdc.type === "image") return;
+            const dur = Math.max(10, parseInt(value)) || 100;
+            pdc.frames[currentFrameIndex].duration = dur;
+            syncTimelineUI();
+        }
+
+        function togglePlayback() {
+            if (pdc.type === "image") return;
+            isPlaying = !isPlaying;
+            document.getElementById("play-pause-btn").innerHTML = isPlaying ? '<i class="fa-solid fa-pause text-xs"></i>' : '<i class="fa-solid fa-play text-xs"></i>';
+            
+            const badge = document.getElementById("player-status-badge");
+            if (isPlaying) {
+                badge.innerHTML = '<i class="fa-solid fa-circle-play animate-pulse"></i> Playing';
+                badge.className = "flex items-center gap-1.5 font-medium text-orange-400";
+            } else {
+                badge.innerHTML = '<i class="fa-solid fa-circle-stop"></i> Paused';
+                badge.className = "flex items-center gap-1.5 font-medium text-slate-500";
+            }
+        }
+
+        function stepBack() {
+            if (pdc.type === "image" || pdc.frames.length === 0) return;
+            isPlaying = false;
+            document.getElementById("play-pause-btn").innerHTML = '<i class="fa-solid fa-play text-xs"></i>';
+            document.getElementById("player-status-badge").innerHTML = '<i class="fa-solid fa-circle-stop"></i> Paused';
+            document.getElementById("player-status-badge").className = "flex items-center gap-1.5 font-medium text-slate-500";
+            
+            currentFrameIndex = (currentFrameIndex - 1 + pdc.frames.length) % pdc.frames.length;
+            accumulatedPlayTime = 0;
+            syncTimelineUI();
+            syncActiveFrameInspector();
+        }
+
+        function stepForward() {
+            if (pdc.type === "image" || pdc.frames.length === 0) return;
+            isPlaying = false;
+            document.getElementById("play-pause-btn").innerHTML = '<i class="fa-solid fa-play text-xs"></i>';
+            document.getElementById("player-status-badge").innerHTML = '<i class="fa-solid fa-circle-stop"></i> Paused';
+            document.getElementById("player-status-badge").className = "flex items-center gap-1.5 font-medium text-slate-500";
+            
+            currentFrameIndex = (currentFrameIndex + 1) % pdc.frames.length;
+            accumulatedPlayTime = 0;
+            syncTimelineUI();
+            syncActiveFrameInspector();
+        }
+
+        function scrubTimeline(val) {
+            if (pdc.type === "image") return;
+            currentFrameIndex = parseInt(val);
+            accumulatedPlayTime = 0;
+            syncTimelineUI();
+            syncActiveFrameInspector();
+        }
+
+        function updatePlaySpeed(value) {
+            playSpeed = parseFloat(value) || 1.0;
+        }
+
+        function addBlankFrame() {
+            if (pdc.type === "image") {
+                // Convert to sequence first
+                pdc.type = "sequence";
+                pdc.playCount = 65535;
+                pdc.frames = [
+                    {
+                        duration: 100,
+                        commands: JSON.parse(JSON.stringify(pdc.commands || []))
+                    }
+                ];
+                delete pdc.commands;
+            }
+            
+            const activeFrame = pdc.frames[currentFrameIndex];
+            const cloneFrame = JSON.parse(JSON.stringify(activeFrame || { duration: 100, commands: [] }));
+            pdc.frames.splice(currentFrameIndex + 1, 0, cloneFrame);
+            currentFrameIndex += 1;
+            
+            syncTimelineUI();
+            syncActiveFrameInspector();
+            showToast("Frame cloned successfully", "success");
+        }
+
+        function deleteActiveFrame() {
+            if (pdc.type === "image") return;
+            if (pdc.frames.length <= 1) {
+                showToast("Cannot delete the last remaining frame of an animation.", "error");
+                return;
+            }
+            
+            pdc.frames.splice(currentFrameIndex, 1);
+            currentFrameIndex = Math.max(0, currentFrameIndex - 1);
+            
+            syncTimelineUI();
+            syncActiveFrameInspector();
+            showToast("Frame deleted", "success");
+        }
+
+        function addNewCommand(type) {
+            let commands = [];
+            if (pdc.type === "image") {
+                if (!pdc.commands) pdc.commands = [];
+                commands = pdc.commands;
+            } else {
+                if (pdc.frames.length === 0) return;
+                const frame = pdc.frames[currentFrameIndex];
+                if (!frame.commands) frame.commands = [];
+                commands = frame.commands;
+            }
+            
+            const newCmd = {
+                type: type,
+                flags: 0,
+                strokeColor: 255, // White
+                strokeWidth: 2,
+                fillColor: 0, // Transparent
+                open: type !== 2,
+                points: type === 2 ? [{ x: 32, y: 32 }] : [{ x: 16, y: 32 }, { x: 48, y: 32 }]
+            };
+            
+            if (type === 2) newCmd.radius = 10;
+            
+            commands.push(newCmd);
+            selectedCommandIndex = commands.length - 1;
+            selectedPointIndex = null;
+            
+            syncActiveFrameInspector();
+            showToast("New shape command added", "success");
+        }
+
+        function deleteCommand(idx) {
+            let commands = [];
+            if (pdc.type === "image") {
+                commands = pdc.commands || [];
+            } else {
+                const frame = pdc.frames[currentFrameIndex];
+                if (frame) commands = frame.commands || [];
+            }
+            
+            commands.splice(idx, 1);
+            selectedCommandIndex = null;
+            selectedPointIndex = null;
+            
+            syncActiveFrameInspector();
+            showToast("Shape command deleted", "success");
+        }
+
+        function moveCommandDepth(idx, dir) {
+            let commands = [];
+            if (pdc.type === "image") {
+                commands = pdc.commands || [];
+            } else {
+                const frame = pdc.frames[currentFrameIndex];
+                if (frame) commands = frame.commands || [];
+            }
+            
+            const dest = idx + dir;
+            if (dest < 0 || dest >= commands.length) return;
+            
+            const temp = commands[idx];
+            commands[idx] = commands[dest];
+            commands[dest] = temp;
+            
+            selectedCommandIndex = dest;
+            selectedPointIndex = null;
+            
+            syncActiveFrameInspector();
+        }
+
+        function updateCommandProperty(prop, value) {
+            let commands = [];
+            if (pdc.type === "image") {
+                commands = pdc.commands || [];
+            } else {
+                const frame = pdc.frames[currentFrameIndex];
+                if (frame) commands = frame.commands || [];
+            }
+            
+            const cmd = commands[selectedCommandIndex];
+            if (!cmd) return;
+            
+            if (prop === "strokeWidth" || prop === "radius") {
+                cmd[prop] = Math.max(0, parseInt(value)) || 0;
+            } else if (prop === "open") {
+                cmd[prop] = value;
+            } else if (prop === "hidden") {
+                if (value) cmd.flags |= 1;
+                else cmd.flags &= ~1;
+            }
+        }
+
+        function openColorPicker(type) {
+            activePickerType = type;
+            
+            let commands = [];
+            if (pdc.type === "image") {
+                commands = pdc.commands || [];
+            } else {
+                const frame = pdc.frames[currentFrameIndex];
+                if (frame) commands = frame.commands || [];
+            }
+            
+            const cmd = commands[selectedCommandIndex];
+            if (!cmd) return;
+            
+            const currentGColor = type === "stroke" ? cmd.strokeColor : cmd.fillColor;
+            activePickerAlphaBits = (currentGColor >> 6) & 0x03;
+            
+            document.getElementById("picker-title-label").textContent = `Choose ${type === 'stroke' ? 'Stroke' : 'Fill'} Color`;
+            
+            // Highlight active opacity badge
+            updateAlphaSelectionBadgeUI();
+            
+            // Build the grid
+            const grid = document.getElementById("picker-color-grid");
+            grid.innerHTML = "";
+            
+            PEBBLE_COLORS.forEach(col => {
+                const btn = document.createElement("button");
+                btn.className = "w-full aspect-square rounded-md border border-slate-800 hover:scale-110 transition hover:z-10 focus:outline-none focus:ring-1 focus:ring-orange-500";
+                btn.style.backgroundColor = col.hex;
+                btn.title = col.name;
+                btn.onclick = () => selectPdcColorFromPicker(col.value);
+                btn.onmouseenter = () => {
+                    document.getElementById("picker-active-color-name").textContent = col.name;
+                    document.getElementById("picker-active-color-hex").textContent = col.hex;
+                };
+                grid.appendChild(btn);
+            });
+            
+            document.getElementById("pebble-color-picker-modal").classList.remove("hidden");
+        }
+
+        function closeColorPicker() {
+            document.getElementById("pebble-color-picker-modal").classList.add("hidden");
+        }
+
+        function selectAlphaBit(bits) {
+            activePickerAlphaBits = bits;
+            updateAlphaSelectionBadgeUI();
+        }
+
+        function updateAlphaSelectionBadgeUI() {
+            for (let i = 0; i <= 3; i++) {
+                const btn = document.getElementById(`alpha-${i}-btn`);
+                if (i === activePickerAlphaBits) {
+                    btn.className = "px-2 py-1 text-[9px] font-bold rounded bg-orange-600 text-white border border-transparent";
+                } else {
+                    btn.className = "px-2 py-1 text-[9px] font-bold rounded bg-slate-900 text-slate-400 border border-slate-800 hover:bg-slate-850";
+                }
+            }
+        }
+
+        function selectPdcColorFromPicker(colorValue) {
+            let commands = [];
+            if (pdc.type === "image") {
+                commands = pdc.commands || [];
+            } else {
+                const frame = pdc.frames[currentFrameIndex];
+                if (frame) commands = frame.commands || [];
+            }
+            
+            const cmd = commands[selectedCommandIndex];
+            if (!cmd) return;
+            
+            const cleanColorIndex = colorValue & 0x3F;
+            const finalizedGColor = (activePickerAlphaBits << 6) | cleanColorIndex;
+            
+            if (activePickerType === "stroke") {
+                cmd.strokeColor = finalizedGColor;
+            } else {
+                cmd.fillColor = finalizedGColor;
+            }
+            
+            syncActiveCommandProperties();
+            closeColorPicker();
+        }
+
+        function handleWatchButton(btn) {
+            if (btn === "back") {
+                currentFrameIndex = 0;
+                accumulatedPlayTime = 0;
+                isPlaying = false;
+                document.getElementById("play-pause-btn").innerHTML = '<i class="fa-solid fa-play text-xs"></i>';
+                document.getElementById("player-status-badge").innerHTML = '<i class="fa-solid fa-circle-stop"></i> Reset';
+                showToast("Timeline reset to start frame", "info");
+                syncTimelineUI();
+            } else if (btn === "select") {
+                togglePlayback();
+            } else if (btn === "up") {
+                stepBack();
+            } else if (btn === "down") {
+                stepForward();
+            }
+        }
+
+        canvas.addEventListener("mousedown", handleCanvasPointerDown);
+        canvas.addEventListener("mousemove", handleCanvasPointerMove);
+        canvas.addEventListener("mouseup", handleCanvasPointerUp);
+        
+        canvas.addEventListener("touchstart", function(e) {
+            if (e.touches.length > 0) handleCanvasPointerDown(e.touches[0]);
+        }, { passive: true });
+        canvas.addEventListener("touchmove", function(e) {
+            if (e.touches.length > 0) handleCanvasPointerMove(e.touches[0]);
+        }, { passive: true });
+        canvas.addEventListener("touchend", handleCanvasPointerUp);
+
+        function handleCanvasPointerDown(e) {
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+            
+            const { scale, tx, ty } = getCanvasZoomParameters();
+            
+            // Map screen coordinates back to Pebble viewbox space
+            const pebbleX = (mouseX - tx) / scale;
+            const pebbleY = (mouseY - ty) / scale;
+            
+            // Get frames commands
+            let commands = [];
+            if (pdc.type === "image") {
+                commands = pdc.commands || [];
+            } else {
+                const frame = pdc.frames[currentFrameIndex];
+                if (frame) commands = frame.commands || [];
+            }
+            
+            // 1. Try selecting point of active command
+            if (selectedCommandIndex !== null) {
+                const cmd = commands[selectedCommandIndex];
+                if (cmd && cmd.points) {
+                    for (let p = 0; p < cmd.points.length; p++) {
+                        const pt = cmd.points[p];
+                        const dist = Math.hypot(pt.x - pebbleX, pt.y - pebbleY);
+                        if (dist < 6 / scale) {
+                            isDraggingPoint = true;
+                            dragPointIndex = p;
+                            dragCommandIndex = selectedCommandIndex;
+                            selectedPointIndex = p;
+                            syncActiveCommandProperties();
+                            return;
+                        }
+                    }
+                }
+            }
+            
+            // 2. Try selecting another command by clicking its nodes
+            for (let c = 0; c < commands.length; c++) {
+                const cmd = commands[c];
+                if (cmd && cmd.points) {
+                    for (let p = 0; p < cmd.points.length; p++) {
+                        const pt = cmd.points[p];
+                        const dist = Math.hypot(pt.x - pebbleX, pt.y - pebbleY);
+                        if (dist < 6 / scale) {
+                            selectedCommandIndex = c;
+                            selectedPointIndex = p;
+                            isDraggingPoint = true;
+                            dragPointIndex = p;
+                            dragCommandIndex = c;
+                            
+                            syncActiveFrameInspector();
+                            return;
+                        }
+                    }
+                }
+            }
+            
+            // 3. Pan canvas viewport if custom scaling zoom is active
+            if (activeScaleMode === "custom") {
+                isPanningViewport = true;
+                lastMouseX = e.clientX;
+                lastMouseY = e.clientY;
+            }
+        }
+
+        function handleCanvasPointerMove(e) {
+            if (isDraggingPoint && dragCommandIndex !== -1 && dragPointIndex !== -1) {
+                const rect = canvas.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+                const mouseY = e.clientY - rect.top;
+                
+                const { scale, tx, ty } = getCanvasZoomParameters();
+                const pebbleX = (mouseX - tx) / scale;
+                const pebbleY = (mouseY - ty) / scale;
+                
+                let commands = [];
+                if (pdc.type === "image") {
+                    commands = pdc.commands || [];
+                } else {
+                    const frame = pdc.frames[currentFrameIndex];
+                    if (frame) commands = frame.commands || [];
+                }
+                
+                const cmd = commands[dragCommandIndex];
+                if (cmd && cmd.points && cmd.points[dragPointIndex]) {
+                    const node = cmd.points[dragPointIndex];
+                    // Subpixel accuracy for precise path, integer rounding for standard
+                    if (cmd.type === 3) {
+                        node.x = parseFloat(pebbleX.toFixed(3));
+                        node.y = parseFloat(pebbleY.toFixed(3));
+                    } else {
+                        node.x = Math.round(pebbleX);
+                        node.y = Math.round(pebbleY);
+                    }
+                    
+                    syncActiveCommandProperties();
+                }
+            } else if (isPanningViewport) {
+                const dx = e.clientX - lastMouseX;
+                const dy = e.clientY - lastMouseY;
+                lastMouseX = e.clientX;
+                lastMouseY = e.clientY;
+                
+                panX += dx;
+                panY += dy;
+            }
+        }
+
+        function handleCanvasPointerUp() {
+            isDraggingPoint = false;
+            dragPointIndex = -1;
+            dragCommandIndex = -1;
+            isPanningViewport = false;
+        }
+
+        function loadPreset(key) {
+            const data = PRESETS[key];
+            if (data) {
+                loadPdcData(JSON.parse(JSON.stringify(data)));
+                showToast(`Loaded ${key} library preset!`, "success");
+            }
+        }
+
+        window.onload = function() {
+            // Emulate resize initially
+            resizeCanvas();
+            window.addEventListener("resize", resizeCanvas);
+            
+            // Start default retro heart animation
+            loadPreset("pulsingHeart");
+            
+            // Run the ticker updates loop
+            requestAnimationFrame(tick);
+        };
+    </script>
+</body>
+</html>
